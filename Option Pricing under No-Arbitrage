@@ -1,0 +1,130 @@
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split
+import tensorflow as tf
+from tensorflow.keras import layers, Model
+from tensorflow.keras.utils import plot_model
+import matplotlib.pyplot as plt
+
+# Read data from Excel file
+file_path = 'C:\\Users\\samira jan\\OneDrive - The University of Liverpool\\Liverpool\\Summer Project\\Data finaly using.xlsx'
+df = pd.read_excel(file_path)
+
+# Select columns 3 and 9 as input X and column 8 as output Y
+X = df.iloc[:, [3, 9]].values
+Y = df.iloc[:, 7].values.reshape(-1, 1)
+
+# Split data into training and test sets
+X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.2, random_state=42)
+
+
+print(f"Training set size: {X_train.shape}, {Y_train.shape}")
+print(f"Test set size: {X_test.shape}, {Y_test.shape}")
+
+# Define custom layer
+class CustomLayer(tf.keras.layers.Layer):
+    def __init__(self, H, c, n):
+        super(CustomLayer, self).__init__()
+        self.H = H
+        self.c = c
+        self.n = n
+    
+    def build(self, input_shape):
+        # Initialize weights
+        self.w0 = self.add_weight(shape=(1,), initializer="random_normal", trainable=True, name='w0')
+        self.wi = self.add_weight(shape=(self.H,), initializer="random_normal", trainable=True, name='wi')
+        self.bij = self.add_weight(shape=(self.H, self.n), initializer="random_normal", trainable=True, name='bij')
+        self.vij = self.add_weight(shape=(self.H, self.n), initializer="random_normal", trainable=True, name='vij')
+    
+    def call(self, inputs):
+        ew0 = tf.exp(self.w0)
+        ew = tf.exp(self.wi)
+        
+        zeta = tf.keras.activations.softplus
+        h = tf.keras.activations.sigmoid
+        
+        output = ew0
+        for i in range(self.H):
+            # Apply softplus to the first column and sigmoid to the second column within the loop
+            product_zeta = tf.reduce_prod(zeta(self.bij[i, :self.c] + tf.exp(self.vij[i, :self.c]) * inputs[:, :self.c]), axis=1)
+            product_h = tf.reduce_prod(h(self.bij[i, self.c:] + tf.exp(self.vij[i, self.c:]) * inputs[:, self.c:]), axis=1)
+            output += ew[i] * product_zeta * product_h
+            
+        return output
+
+# Define custom model
+class CustomModel(tf.keras.Model):
+    def __init__(self, H, c, n):
+        super(CustomModel, self).__init__()
+        self.custom_layer = CustomLayer(H, c, n)
+
+    def call(self, inputs):
+        return self.custom_layer(inputs)
+
+# Hyperparameters
+H = 5  # Number of hidden units
+c = 1  # Number of inputs for softplus function
+n = 2  # Total number of inputs
+
+# Instantiate and compile the model
+model = CustomModel(H, c, n)
+model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.001), loss='mse')
+
+# Train the model
+history = model.fit(X_train, Y_train, epochs=1000, validation_split=0.2)
+
+# Evaluate the model
+loss = model.evaluate(X_test, Y_test)
+print(f"Test Loss: {loss}")
+
+# Predict using the model
+Y_pred = model.predict(X_test)
+
+# Scatter plot of true values vs. predicted values
+plt.figure(figsize=(10, 6))
+plt.scatter(Y_test, Y_pred, alpha=0.5)
+plt.xlabel('True Values')
+plt.ylabel('Predicted Values')
+plt.title('True Values vs. Predicted Values')
+plt.show()
+
+# Plot loss over epochs
+plt.figure(figsize=(10, 6))
+plt.plot(history.history['loss'], label='Train Loss')
+plt.plot(history.history['val_loss'], label='Validation Loss')
+plt.xlabel('Epoch')
+plt.ylabel('Loss')
+plt.legend()
+plt.show()
+
+
+# Convert to numpy arrays for plotting
+X_test_np = X_test
+Y_test_np = Y_test
+Y_pred_np = Y_pred
+
+# Create a 3D scatter plot
+fig = plt.figure()
+ax = fig.add_subplot(111, projection='3d')
+
+# Plot actual values
+ax.scatter(X_test_np[:, 0], X_test_np[:, 1], Y_test_np, c='blue', marker='o', label='Actual Values')
+
+# Plot predicted values
+ax.scatter(X_test_np[:, 0], X_test_np[:, 1], Y_pred_np, c='red', marker='x', label='Predicted Values')
+
+# Set labels and title
+ax.set_xlabel('T')
+ax.set_ylabel('M')
+ax.set_zlabel('C')
+ax.set_title('3D Scatter Plot of Actual vs. Predicted Values')
+
+# Add legend
+ax.legend(
+    loc='upper left',  
+    frameon=True,      
+    shadow=True,       
+    fancybox=True      
+)
+# Show plot
+plt.show()
